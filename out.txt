@@ -6,24 +6,6 @@ stage : 3 |  max_bias : -3/16
 stage : 4 |  max_bias : 3/32
 stage : 5 |  max_bias : -3/64
 stage : 6 |  max_bias : -3/128
-0000|1111|0000
-0000|1000|0000
-current_total_bias : 3/1024
-0000|1111|0000
-0000|1001|0000
-current_total_bias : 9/2048
-1111|0000|0000
-1000|0000|0000
-current_total_bias : -9/2048
-1111|0000|0000
-1010|0000|0000
-current_total_bias : -9/2048
-0000|0000|1111
-0000|0000|1000
-current_total_bias : -3/2048
-0000|1111|0000
-0000|1100|0000
-current_total_bias : 9/1024
 stage : 7 |  max_bias : -3/256
 **************
 0000|0000|1011

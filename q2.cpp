@@ -233,11 +233,11 @@ int main() {
 					current_total_bias.update(bias[inp_mask][out_mask]);
 				}
 				if (!bad && dp[s][cur_mask] <= current_total_bias) {
-					if (s == 0 && mask == 15) {
-						rev_mask = permute(nxt_mask, PINV);
-						print(cur_mask); print(rev_mask);
-						trace(current_total_bias);
-					}
+					// if (s == 0 && mask == 15) {
+					// 	rev_mask = permute(nxt_mask, PINV);
+					// 	print(cur_mask); print(rev_mask);
+					// 	trace(current_total_bias);
+					// }
 					dp[s][cur_mask] = current_total_bias;
 					parent[s][cur_mask] = nxt_mask;
 				}

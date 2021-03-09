@@ -72,7 +72,11 @@ axs.yaxis.set_tick_params(pad = 10)
 bins = sorted(list(set(bias))) + [max(bias) + 2]
 N, bins, patches = axs.hist(x, bins = bins) 
 
-axs.set_xticks(bins)  
+ticks = [1 + b for b in bins[:-1]]
+axs.set_xticks(ticks)
+# probs = [round((b - 1 - (1 << (SBOX_SZ - 1))) / (1 << SBOX_SZ), 3) for b in ticks]
+# axs.set_xticklabels([str(b) for b in probs])  
+axs.set_xticklabels([str(b-1) for b in ticks])  
 axs.xaxis.set_tick_params(labelsize=10)  
 
 # Setting color 
