@@ -16,9 +16,12 @@ using namespace std;
 #include "q2_trace.h"
 
 using ll = long long;
+#define popcnt __builtin_popcount
+#define pii pair<int, int>
 #define mp make_pair
 #define eb emplace_back
 #define all(v) (v).begin(), (v).end()
+#define rall(v) (v).rbegin(), (v).rend()
 
 mt19937 rng(chrono::steady_clock::now().time_since_epoch().count());
 #define shuf(v) shuffle((v).begin(), (v).end(), rng)
@@ -63,19 +66,22 @@ using frac = Fraction<ll>;
 
 int NUM_BITS, NUM_STAGES;
 int UNITS, SBOX_BITS, SBOX_SZ;
+int KEY_BITS;
+int plain_bits, cipher_bits;
+
 vector<int> SBOX, PBOX;
-vector<int> PINV_MEM;
+vector<int> SINV, PINV;
 
 vector<vector<frac>> bias, dp;
 vector<vector<int>> parent;
+vector<int> table;
+vector<pii> data;
 
 string binary(int p) {
-	string s;
-	for (int i = SBOX_BITS - 1; i >= 0; i--)
+	string s(SBOX_BITS, '0');
+	for (int i = 0; i < SBOX_BITS; i++)
 		if ((p >> i) & 1)
-			s += '1';
-		else
-			s += '0';
+			s[SBOX_BITS - i - 1] = '1';
 	return s;
 }
 int permute(int plain, vector<int>& p) {
@@ -86,6 +92,17 @@ int permute(int plain, vector<int>& p) {
 		c = NUM_BITS - c - 1;
 		ret ^= (1 << c);
 	}
+	return ret;
+}
+int pass_box(int plain, int sz, vector<int>& box) {
+	vector<int> vec(sz);
+	for (int i = 0; i < sz; i++) {
+		vec[i] = box[plain & (SBOX_SZ - 1)];
+		plain >>= SBOX_BITS;
+	}
+	int ret = 0;
+	for (int i = sz - 1; i >= 0; i--)
+		ret = (ret << SBOX_BITS) + vec[i];
 	return ret;
 }
 void print(int plain) {
@@ -112,14 +129,14 @@ void draw(int plain) {
 		}
 		cout << endl;
 		plain = parent[i][plain];
-		print(PINV_MEM[plain]);
+		print(permute(plain, PINV));
 		cout << endl;
 	}
 	print(plain);
 	cout << sep << endl;
 }
 void random_init() {
-	NUM_BITS = 16, NUM_STAGES = 5, SBOX_BITS = 4;
+	NUM_BITS = 12, NUM_STAGES = 5, SBOX_BITS = 4;
 	assert(NUM_BITS % SBOX_BITS == 0);
 	UNITS = NUM_BITS / SBOX_BITS;
 	SBOX_SZ = 1 << SBOX_BITS;
@@ -129,10 +146,8 @@ void random_init() {
 	shuf(SBOX), shuf(PBOX);
 }
 void custom_init() {
-	SBOX = {14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7};
-	PBOX = {0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15};
-	// SBOX = {8, 15, 2, 10, 12, 11, 6, 13, 14, 5, 4, 0, 1, 3, 9, 7};
-	// PBOX = {9, 8, 2, 6, 1, 7, 11, 3, 10, 4, 0, 5};
+	SBOX = {4, 3, 6, 11, 12, 14, 13, 10, 5, 15, 8, 7, 1, 2, 9, 0};
+	PBOX = {1, 7, 9, 11, 6, 0, 8, 3, 2, 10, 4, 5};
 	NUM_STAGES = 5;
 	NUM_BITS = PBOX.size();
 	SBOX_SZ = SBOX.size();
@@ -141,22 +156,69 @@ void custom_init() {
 	assert((1 << SBOX_BITS) == SBOX_SZ);
 	assert(NUM_BITS % SBOX_BITS == 0);
 }
+void generate(int key) {
+	data.clear();
+	for (int plain = 0; plain < (1 << NUM_BITS); plain++) {
+		int cipher = plain;
+		for (int s = 0; s < NUM_STAGES - 1; s++) {
+			cipher ^= key;
+			cipher = pass_box(cipher, UNITS, SBOX);
+			cipher = permute(cipher, PBOX);
+		}
+		cipher ^= key;	
+		cipher = pass_box(cipher, UNITS, SBOX);
+		cipher ^= key;
+		data.eb(plain, cipher);
+	}
+	shuf(data);
+}
+int get_sbox_mask(int p, int mask) {
+	vector<int> sbox_mask;
+	for (int i = UNITS - 1; i >= 0; i--) {
+		int c = mask & (SBOX_SZ - 1);
+		int d = p & (SBOX_SZ - 1);
+		if (c > 0) sbox_mask.eb(d);
+		p >>= SBOX_BITS; 
+		mask >>= SBOX_BITS; 
+	}
+	int active = sbox_mask.size(), ret = 0;
+	for (int i = active - 1; i >= 0; i--)
+		ret = (ret << SBOX_BITS) + sbox_mask[i];
+	return ret;
+}
+void update_scores(int plain, int cipher) {
+	int new_cipher = get_sbox_mask(cipher, cipher_bits);
+	int new_cipher_bits = get_sbox_mask(cipher_bits, cipher_bits);
+	int active = 0, tmp_cipher_bits = cipher_bits;
+	for (int i = 0; i < UNITS; i++) {
+		if (tmp_cipher_bits & (SBOX_SZ - 1)) active++;
+		tmp_cipher_bits >>= SBOX_BITS;
+	}
+	for (int k = 0; k < (1 << KEY_BITS); k++) {
+		int bits = pass_box(new_cipher ^ k, active, SINV);
+		bits = popcnt(bits & new_cipher_bits);
+		bits += popcnt(plain & plain_bits);
+		if (bits % 2 == 0) table[k]++;
+	}
+}
 int main() {
 	ios_base::sync_with_stdio(false);
 	cin.tie(NULL);
 	cout.tie(NULL);
 
-	// random_init();
-	custom_init();
+	random_init();
+	// custom_init();
 
 	trace(NUM_BITS, NUM_STAGES, SBOX_BITS);
 	trace(SBOX);
 	trace(PBOX);
 
 	// initialize inverse boxes
-	PINV_MEM.resize(1 << NUM_BITS);
-	for (int i = 0; i < (1 << NUM_BITS); i++)
-		PINV_MEM[permute(i, PBOX)] = i;
+	PINV.resize(NUM_BITS); SINV.resize(SBOX_SZ);
+	for (int i = 0; i < NUM_BITS; i++)
+		PINV[PBOX[i]] = i;
+	for (int i = 0; i < SBOX_SZ; i++)
+		SINV[SBOX[i]] = i;
 
 	// calculate biases
 	bias.resize(SBOX_SZ);
@@ -166,8 +228,8 @@ int main() {
 		for (int j = 1; j < SBOX_SZ; j++) {
 			int cnt = 0, cur;
 			for (int k = 0; k < SBOX_SZ; k++) {
-				cur = __builtin_popcount(SBOX[k] & j);
-				cur += __builtin_popcount(k & i);
+				cur = popcnt(SBOX[k] & j);
+				cur += popcnt(k & i);
 				if (!(cur & 1)) cnt++;
 			}
 			assert(!(cnt & 1));
@@ -200,9 +262,9 @@ int main() {
 		max_bias = frac(0);
 		for (nxt_mask = 1; nxt_mask < (1 << NUM_BITS); nxt_mask++) {
 			if (dp[s + 1][nxt_mask].x == 0) continue;
-			rev_mask = PINV_MEM[nxt_mask], bits = 0;
+			rev_mask = permute(nxt_mask, PINV), bits = 0;
 			for (ptr = UNITS - 1; ptr >= 0; ptr--) {
-				nxt_sboxes_mask[ptr] = rev_mask & ((1 << SBOX_BITS) - 1);
+				nxt_sboxes_mask[ptr] = rev_mask & (SBOX_SZ - 1);
 				rev_mask >>= SBOX_BITS;
 				if (nxt_sboxes_mask[ptr]) bits += SBOX_BITS;
 			}
@@ -211,7 +273,7 @@ int main() {
 				current_total_bias = dp[s + 1][nxt_mask];
 				for (ptr = UNITS - 1; ptr >= 0; ptr--) {
 					if (nxt_sboxes_mask[ptr] == 0) continue;
-					inp_mask = sub_mask & ((1 << SBOX_BITS) - 1);
+					inp_mask = sub_mask & (SBOX_SZ - 1);
 					out_mask = nxt_sboxes_mask[ptr];
 					sub_mask >>= SBOX_BITS;
 					cur_mask += inp_mask << ((UNITS - ptr - 1) * SBOX_BITS);
@@ -235,34 +297,60 @@ int main() {
 	}
 
 	vector<int> final_parent(1 << NUM_BITS, -1);
-	int min_cnt = UNITS + 1, plaintext;
+	int min_cnt = UNITS + 1;
 	for (int i = 0; i < (1 << NUM_BITS); i++) {
 		int j = i, cnt = 0;
 		for (int k = 0; k < NUM_STAGES - 1; k++)
 			j = parent[k][j];
 		final_parent[i] = j;
 		if (!(max_bias == dp[0][i])) continue;
-		for (int k = UNITS - 1; k >= 0; k--) {
+		for (int k = 0; k < UNITS; k++) {
 			if (j & (SBOX_SZ - 1)) cnt++;
 			j >>= SBOX_BITS;
 		}
 		if (cnt < min_cnt)
-			plaintext = i, min_cnt = cnt;
+			plain_bits = i, min_cnt = cnt;
 	}
 
-	draw(plaintext);
+	draw(plain_bits);
+	cipher_bits = final_parent[plain_bits];
 
 	cout << "Active SBoxes : ";
 	cout << min_cnt << endl;
 
 	cout << "Plaintext bits :";
-	for (int i = 0; i < NUM_BITS; i++)
-		if ((plaintext >> i) & 1) cout << " " << i;
+	for (int i = NUM_BITS - 1; i >= 0; i--)
+		if ((plain_bits >> i) & 1) cout << " " << (NUM_BITS - i - 1);
 	cout << endl;
 
 	cout << "Ciphertext bits :";
-	for (int i = 0; i < NUM_BITS; i++)
-		if ((final_parent[plaintext] >> i) & 1)
-			cout << " " << i;
+	for (int i = NUM_BITS - 1; i >= 0; i--)
+		if ((cipher_bits >> i) & 1) cout << " " << (NUM_BITS - i - 1);
 	cout << endl;
+
+	KEY_BITS = min_cnt * SBOX_BITS;
+	table.assign(1 << KEY_BITS, 0);
+
+	int key = abs((ll)rng()) % (1 << NUM_BITS);
+	key = 2843;
+	generate(key);	
+
+	int samples = data.size();
+
+	for (int i = 0; i < samples; i++) {
+		int plaintext = data[i].first;
+		int ciphertext = data[i].second;
+		update_scores(plaintext, ciphertext);
+	}
+
+	vector<pii> candidates(1 << KEY_BITS);
+	for (int i = 0; i < (1 << KEY_BITS); i++) {
+		candidates[i].first = abs(2 * table[i] - samples);
+		candidates[i].second = i;
+	}
+	sort(rall(candidates));
+
+	int subkey = get_sbox_mask(key, cipher_bits);
+	trace(key, subkey);
+	trace(candidates);
 }
