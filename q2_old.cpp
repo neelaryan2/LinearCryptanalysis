@@ -139,7 +139,7 @@ void draw(int plain) {
 	cout << sep << endl;
 }
 void random_init() {
-	NUM_BITS = 12, NUM_STAGES = 5, SBOX_BITS = 4;
+	NUM_BITS = 6, NUM_STAGES = 5, SBOX_BITS = 3;
 	assert(NUM_BITS % SBOX_BITS == 0);
 	UNITS = NUM_BITS / SBOX_BITS;
 	SBOX_SZ = 1 << SBOX_BITS;
@@ -149,11 +149,13 @@ void random_init() {
 	shuf(SBOX), shuf(PBOX);
 }
 void custom_init() {
+	SBOX = {3, 0, 6, 1, 5, 7, 4, 2};
+	PBOX = {3, 2, 4, 5, 1, 0};
 	// SBOX = {0, 2, 4, 6, 3, 1, 7, 5};
 	// PBOX = {0, 3, 6, 1, 4, 7, 2, 5, 8};
-	SBOX = {4, 3, 6, 11, 12, 14, 13, 10, 5, 15, 8, 7, 1, 2, 9, 0};
-	PBOX = {1, 7, 9, 11, 6, 0, 8, 3, 2, 10, 4, 5};
-	NUM_STAGES = 3;
+	// SBOX = {4, 3, 6, 11, 12, 14, 13, 10, 5, 15, 8, 7, 1, 2, 9, 0};
+	// PBOX = {1, 7, 9, 11, 6, 0, 8, 3, 2, 10, 4, 5};
+	NUM_STAGES = 4;
 	NUM_BITS = PBOX.size();
 	SBOX_SZ = SBOX.size();
 	SBOX_BITS = int(log2(SBOX_SZ));
@@ -246,6 +248,68 @@ void print_testcase() {
 	for (pii p : data)
 		cout << p.first << ' ' << p.second << '\n';
 	cout << flush;
+}
+void greedy() {
+	vector<vector<frac>> greed;
+	vector<vector<int>> greed_parent;
+
+	greed_parent.resize(NUM_STAGES), greed.resize(NUM_STAGES);
+	for (int i = 0; i < NUM_STAGES; i++) {
+		greed[i].assign(1 << NUM_BITS, 0);
+		greed_parent[i].assign(1 << NUM_BITS, -1);
+	}
+	greed[NUM_STAGES - 1].assign(1 << NUM_BITS, frac(1, 1));
+	iota(all(greed_parent[NUM_STAGES - 1]), 0);
+
+	frac max_bias(0), current_total_bias(0);
+	vector<int> nxt_sboxes_mask(UNITS);
+
+	int rev_mask, bits, stage;
+	int sub_mask, cur_mask, bad;
+	int inp_mask, out_mask;
+	int nxt_mask, mask, ptr;
+
+	for (int s = NUM_STAGES - 2; s >= 0; s--) {
+		max_bias = frac(0), nxt_mask = 1;
+		for (mask = 1; mask < (1 << NUM_BITS); mask++)
+			if (greed[s + 1][nxt_mask] < greed[s + 1][mask])
+				nxt_mask = mask;
+		vector<int> nxts;
+		for (mask = 1; mask < (1 << NUM_BITS); mask++)
+			if (greed[s + 1][nxt_mask] == greed[s + 1][mask])
+				nxts.eb(mask);
+		for (int nxt_mask : nxts) {
+			if (greed[s + 1][nxt_mask].x == 0) continue;
+			rev_mask = permute(nxt_mask, PINV), bits = 0;
+			for (ptr = UNITS - 1; ptr >= 0; ptr--) {
+				nxt_sboxes_mask[ptr] = rev_mask & (SBOX_SZ - 1);
+				rev_mask >>= SBOX_BITS;
+				if (nxt_sboxes_mask[ptr]) bits += SBOX_BITS;
+			}
+			for (mask = 1; mask < (1 << bits); mask++) {
+				sub_mask = mask, cur_mask = 0, bad = 0;
+				current_total_bias = greed[s + 1][nxt_mask];
+				for (ptr = UNITS - 1; ptr >= 0; ptr--) {
+					if (nxt_sboxes_mask[ptr] == 0) continue;
+					inp_mask = sub_mask & (SBOX_SZ - 1);
+					out_mask = nxt_sboxes_mask[ptr];
+					sub_mask >>= SBOX_BITS;
+					cur_mask += inp_mask << ((UNITS - ptr - 1) * SBOX_BITS);
+					if (bias[inp_mask][out_mask].x == 0) bad = 1;
+					current_total_bias.update(bias[inp_mask][out_mask]);
+				}
+				if (!bad && greed[s][cur_mask] < current_total_bias) {
+					greed[s][cur_mask] = current_total_bias;
+					greed_parent[s][cur_mask] = nxt_mask;
+					if (max_bias < current_total_bias)
+						max_bias = current_total_bias;
+				}
+			}
+		}
+		string greedy_i = "";
+		stage = NUM_STAGES - s;
+		trace(greedy, stage, max_bias);
+	}
 }
 int main() {
 	ios_base::sync_with_stdio(false);
@@ -342,6 +406,9 @@ int main() {
 		trace(stage, max_bias);
 	}
 
+	// greedy();
+	// exit(0);
+
 	vector<int> final_parent(1 << NUM_BITS, -1);
 	int min_cnt = UNITS + 1;
 	for (int i = 0; i < (1 << NUM_BITS); i++) {
@@ -357,7 +424,6 @@ int main() {
 		if (cnt < min_cnt)
 			plain_bits = i, min_cnt = cnt;
 	}
-
 
 	cout << endl; draw(plain_bits); cout << endl;
 	
