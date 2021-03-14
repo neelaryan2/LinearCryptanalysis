@@ -95,7 +95,7 @@ plt.title('AES SBox Bias')
 
 # Show plot 
 plt.savefig('AES_Sbox_bias.png', bbox_inches='tight', transparent=True)
-# plt.show() 
+plt.show() 
 
 df = pd.DataFrame(counts, columns=['Bias', 'Combinations'])
 print(df.to_string(index=False))
