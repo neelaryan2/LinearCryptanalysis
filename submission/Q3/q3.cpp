@@ -306,11 +306,11 @@ int main() {
 	vector<int> final_parent(1 << NUM_BITS, -1);
 	int min_cnt = UNITS + 1;
 	for (int i = 1; i < (1 << NUM_BITS); i++) {
+		if (!(max_bias == dp[0][i])) continue;
 		int j = i, cnt = 0;
 		for (int k = 0; k < NUM_STAGES - 1; k++)
 			j = parent[k][j];
 		final_parent[i] = j;
-		if (!(max_bias == dp[0][i])) continue;
 		for (int k = 0; k < UNITS; k++) {
 			if (j & (SBOX_SZ - 1)) cnt++;
 			j >>= SBOX_BITS;
