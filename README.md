@@ -21,4 +21,4 @@ round key
 
 [Neel Aryan Gupta](https://www.cse.iitb.ac.in/~neelaryan) - 180050067  
 Pulkit Agrawal - 180050081\
-Tathagat Verma - 180050111\
+Tathagat Verma - 180050111
